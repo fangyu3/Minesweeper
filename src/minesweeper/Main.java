@@ -1,110 +1,117 @@
 package minesweeper;
 
 import java.util.Scanner;
-import java.util.Random;
 
 public class Main {
 
-    private static final int fieldSize = 9;
     private static Scanner scanner = new Scanner(System.in);
+    private static boolean playerWin = false;
 
     public static void main(String[] args) {
 
-        Cell[][] mineField = new Cell[fieldSize][fieldSize];
+        MineField mineField = new MineField();
 
-        initializeMineField(mineField);
+        mineField.initialize();
 
         while (!gameEnd(mineField)) {
             // Print mineField
-            printMineField(mineField);
-            System.out.println("Set/delete mines marks (x and y coordinates): ");
+            mineField.display();
+            System.out.println("Set/unset mines marks or claim a cell as free: ");
             int x = scanner.nextInt();
             int y = scanner.nextInt();
+            String action = scanner.next();
             scanner.nextLine();
-            addMark(y-1,x-1,mineField);
+
+            if (action.equals("free")) {
+                if (!mineField.isMineGenerated()) {
+                    mineField.generateMines(x,y);
+                }
+                exploreCell(x,y,mineField);
+            }
+
+            if (action.equals("mine")) {
+                addMark(x,y, mineField);
+            }
+        }
+
+        if (!playerWin) {
+            mineField.revealMines();
+            System.out.println("You stepped on a mine and failed!");
+            return;
         }
 
         System.out.println("Congratulations! You found all mines!");
+        return;
     }
 
-    public static void initializeMineField(Cell[][]mineField) {
-
-        System.out.print("How many mines do you want on the field?");
-        int numMines = scanner.nextInt();
-        scanner.nextLine();
-
-        // Initialize field
-        for (int i=0; i<=fieldSize*fieldSize-1; i++) {
-            int row = i/fieldSize;
-            int col = i%fieldSize;
-            mineField[row][col] = new Cell();
-        }
-
-        Random random = new Random(fieldSize*fieldSize);
-        // Add mines
-        for (int i=1; i<=numMines; i++) {
-            int minePos = random.nextInt();
-            int row = i/fieldSize;
-            int col = i%fieldSize;
-
-            if (!mineField[row][col].isMine()) {
-                mineField[row][col].setMine(true);
-            }
-            else
-                i--;
-        }
-
-        // Get number of mines around empty cell
-        for (int row=0; row<fieldSize; row++) {
-            for (int col = 0; col < fieldSize; col++) {
-                if (!mineField[row][col].isMine()) {
-                    mineField[row][col].setSymbol(checkMines(row,col,mineField)==0?
-                            ".":checkMines(row,col,mineField) + "");
-                }
-            }
-        }
-    }
-
-    public static void addMark(int row, int col, Cell[][]mineField) {
-        Cell cell = mineField[row][col];
+    public static void addMark(int x, int y, MineField mineField) {
+        int row = y-1;
+        int col = x-1;
+        Cell cell = mineField.getMineField()[row][col];
 
         if (cell.isMarked()) {
             cell.setMarked(false);
-            cell.setSymbol(checkMines(row,col,mineField)==0?
-                    ".":checkMines(row,col,mineField) + "");
+            cell.setSymbol(".");
         }
         else {
-            if (!cell.getSymbol().equals(".")) {
-                System.out.println("There is a number here!");
-            }
-            else {
-                cell.setMarked(true);
-                cell.setSymbol("*");
-            }
+            cell.setMarked(true);
+            cell.setSymbol("*");
         }
     }
 
-    public static int checkMines(int row, int col, Cell[][]mineField) {
-        int topBound = row-1>0? row-1:0;
-        int botBound = row+1<fieldSize? row+1:fieldSize-1;
-        int leftBound = col-1>0? col-1:0;
-        int rightBound = col+1<fieldSize? col+1:fieldSize-1;
+    public static void exploreCell(int x, int y, MineField mineField) {
+        int row = y-1;
+        int col = x-1;
+        Cell cell = mineField.getMineField()[row][col];
 
-        int numMines = 0;
-
-        for (int i=topBound; i<=botBound; i++) {
-            for (int j=leftBound; j<=rightBound; j++) {
-                if (mineField[i][j].isMine())
-                    numMines ++;
-            }
+        if (cell.isMine()) {
+            cell.setExplored(true);
+            cell.setMarked(false);
         }
-        return numMines;
+        else if (cell.getNumMinesAround() > 0) {
+            cell.setExplored(true);
+            cell.setMarked(false);
+            cell.setSymbol(cell.getNumMinesAround()+"");
+        }
+        else {
+            mineField.freeCells(cell);
+        }
     }
 
-    public static boolean gameEnd(Cell[][] mineField) {
-        for (int row=0; row<fieldSize; row++) {
-            for (int col = 0; col < fieldSize; col++) {
-                Cell cell = mineField[row][col];
+    public static boolean gameEnd(MineField mineField) {
+        // Continue game if mines are not generated
+        if (!mineField.isMineGenerated())
+            return false;
+
+        int numExploredCells = 0;
+
+        // Player win case #1: player checks all cells that are not mines
+        for (int row=0; row<mineField.fieldSize; row++) {
+            for (int col = 0; col < mineField.fieldSize; col++) {
+                Cell cell = mineField.getMineField()[row][col];
+
+                if (cell.isMine() && cell.isExplored()) {
+                    playerWin = false;
+                    return true;
+                }
+
+                if (!cell.isMine() && cell.isExplored())
+                    numExploredCells++;
+            }
+        }
+
+        int totalCells = mineField.fieldSize*mineField.fieldSize;
+
+        if (numExploredCells == totalCells-mineField.getNumMines()) {
+            playerWin = true;
+            return true;
+        }
+
+        // Player win case #2: player flags all cells that are mines
+        for (int row=0; row<mineField.fieldSize; row++) {
+            for (int col = 0; col < mineField.fieldSize; col++) {
+                Cell cell = mineField.getMineField()[row][col];
+
                 if (cell.isMarked()) {
                     if (!cell.isMine())
                         return false;
@@ -117,60 +124,7 @@ public class Main {
                 }
             }
         }
+        playerWin = true;
         return true;
-    }
-
-    public static void printMineField(Cell[][] mineField) {
-
-        // Display top boarder + X axis
-        for (int i=0; i<fieldSize; i++) {
-                if (i==0)
-                    System.out.print(" |");
-
-                    System.out.print(i+1);
-
-                if (i==fieldSize-1)
-                    System.out.print("|");
-        }
-
-        System.out.println();
-
-        for (int i=0; i<fieldSize; i++) {
-            if (i==0)
-                System.out.print("-|");
-
-                System.out.print("-");
-
-            if (i==fieldSize-1)
-                System.out.print("|");
-        }
-
-        System.out.println();
-
-        // Display actual mine field + Y axis
-        for (int row=0; row<fieldSize; row++) {
-            for (int col=0; col<fieldSize; col++) {
-                if (col == 0)
-                    System.out.print((row+1) + "|");
-
-                System.out.print(mineField[row][col].getSymbol());
-
-                if (col == fieldSize-1)
-                    System.out.print("|");
-            }
-            System.out.println();
-        }
-
-        // Display bottom border
-        for (int i=0; i<fieldSize; i++) {
-            if (i==0)
-                System.out.print("-|");
-
-            System.out.print("-");
-
-            if (i==fieldSize-1)
-                System.out.print("|");
-        }
-        System.out.println();
     }
 }
